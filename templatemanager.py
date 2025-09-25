@@ -35,14 +35,14 @@ class TemplateManager:
                 'name': '抱枕',
                 'category': '家居',
                 'size': (400, 400),
-                'print_areas': [{'x': 50, 'y': 50, 'width': 300, 'height': 300, 'perspective_points': [[50, 50], [350, 50], [350, 350], [50, 350]]}],
+                'print_areas': [{'x': 50, 'y': 50, 'width': 300, 'height': 300, 'points': [[50, 50], [350, 50], [350, 350], [50, 350]]}],
                 'color': (250, 250, 250)
             },
             {
                 'name': 'A4海报',
                 'category': '印刷品',
                 'size': (297, 420),
-                'print_areas': [{'x': 20, 'y': 20, 'width': 257, 'height': 380, 'perspective_points': [[20, 20], [277, 20], [277, 400], [20, 400]]}],
+                'print_areas': [{'x': 20, 'y': 20, 'width': 257, 'height': 380, 'points': [[20, 20], [277, 20], [277, 400], [20, 400]]}],
                 'color': (255, 255, 255)
             }
         ]

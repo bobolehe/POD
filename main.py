@@ -524,6 +524,7 @@ class PODPreviewSystem:
         
         # 处理每个打印区域
         for area in self.current_template['print_areas']:
+            print(area)
             processed_pattern = self.apply_pattern_effects()
             
             # 调整图案大小适应打印区域
@@ -538,7 +539,7 @@ class PODPreviewSystem:
                 [0, resized_pattern.shape[0]]
             ], dtype=np.float32)
             
-            dst_points = np.array(area['perspective_points'], dtype=np.float32)
+            dst_points = np.array(area['points'], dtype=np.float32)
             resized_pattern = self.image_processor.perspective_transform(
                 resized_pattern, src_points, dst_points)
             
