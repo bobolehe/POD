@@ -5,6 +5,7 @@ POD商品模板和图案预览系统
 """
 
 import tkinter as tk
+from tkinter import simpledialog
 from tkinter import ttk, filedialog, messagebox, colorchooser
 import cv2
 import numpy as np
@@ -392,10 +393,12 @@ class PODPreviewSystem:
             # 获取file_path 文件名称
             template_name = os.path.basename(file_path)
             img_path = f"templates/{template_name.replace(' ', '_')}.png"
+
             # 使用numpy读取图片，避免中文路径问题
             with open(file_path, 'rb') as f:
                 img_array = np.frombuffer(f.read(), np.uint8)
                 img = cv2.imdecode(img_array, cv2.IMREAD_UNCHANGED)
+
             cv2.imwrite(img_path, img)
 
             if img is None:
@@ -464,7 +467,7 @@ class PODPreviewSystem:
     
     def rotate_pattern(self, angle: int):
         """旋转图案"""
-        if not self.current_pattern is not None:
+        if self.current_pattern is None:
             return
         
         if angle == 90:
@@ -479,7 +482,7 @@ class PODPreviewSystem:
     
     def update_effects(self, *args):
         """更新效果设置"""
-        if not self.current_pattern is not None:
+        if self.current_pattern is None:
             return
         
         self.pattern_effects['shadow'] = self.shadow_var.get()

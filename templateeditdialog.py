@@ -1,4 +1,5 @@
 import tkinter as tk
+from tkinter import simpledialog
 from tkinter import ttk, filedialog, messagebox, colorchooser
 import cv2
 import numpy as np
