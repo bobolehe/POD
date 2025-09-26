@@ -63,7 +63,8 @@ class TemplateManager:
                     template_data['name'],
                     template_data['category'],
                     img_path,
-                    template_data['print_areas']
+                    template_data['print_areas'],
+                    template_data.get('mirror_areas', [])
                 )
         self.load_templates()  # 重新加载模板
     
@@ -100,6 +101,6 @@ class TemplateManager:
         return categories
     
     def add_custom_template(self, name: str, category: str, image_path: str,
-                          print_areas: List[Dict]) -> bool:
+                          print_areas: List[Dict], mirror_areas: List[Dict] = None) -> bool:
         """添加自定义模板"""
-        return self.db_manager.save_template(name, category, image_path, print_areas)
+        return self.db_manager.save_template(name, category, image_path, print_areas, mirror_areas)

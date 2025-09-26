@@ -42,9 +42,7 @@ class DatabaseManager:
         conn.commit()
         conn.close()
     
-    def save_template(self, name: str, category: str, image_path: str, 
-                     print_areas: List[Dict], mirror_areas: List[Dict] = None,
-                     extend_areas: List[Dict] = None):
+    def save_template(self, name: str, category: str, image_path: str, print_areas: List[Dict], mirror_areas: List[Dict] = None, extend_areas: List[Dict] = None):
         """保存模板到数据库"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()

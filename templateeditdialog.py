@@ -25,7 +25,7 @@ class TemplateEditDialog:
         self.dialog = tk.Toplevel(parent)
         self.dialog.title("编辑模板")
         # 设置窗口大小
-        w, h = 1000, 700
+        w, h = 1440, 950
         # 获取屏幕尺寸
         sw = self.dialog.winfo_screenwidth()
         sh = self.dialog.winfo_screenheight()
@@ -33,13 +33,16 @@ class TemplateEditDialog:
         x = (sw - w) // 2
         y = (sh - h) // 2
         # 设置大小和位置
+        print(f"{w}x{h}+{x}+{y}")
         self.dialog.geometry(f"{w}x{h}+{x}+{y}")
         self.dialog.transient(parent)
         self.dialog.grab_set()
         
         # 初始化变量
         self.print_areas = self.template_data.get('print_areas', [])
+        self.mirror_areas = self.template_data.get('mirror_areas', [])  # 新增：镜像补充区域
         self.current_area = None
+        self.current_mirror_area = None  # 新增：当前选中的镜像区域
         self.template_img = None
         self.scale_factor = 1.0
         self.canvas_offset_x = 0
@@ -47,6 +50,7 @@ class TemplateEditDialog:
         self.picking_point = None
         self.original_cursor = None
         self.point_picking_sequence = None
+        self.area_type = "print"  # 新增：当前编辑的区域类型，"print" 或 "mirror"
         
         # 拖动相关变量
         self.drag_start = None
@@ -71,13 +75,13 @@ class TemplateEditDialog:
         main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
         # 左侧控制面板
-        control_frame = ttk.Frame(main_frame, width=250)
+        control_frame = ttk.Frame(main_frame, width=330)
         control_frame.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 10))
         control_frame.pack_propagate(False)
         
         # 模板信息
-        info_frame = ttk.LabelFrame(control_frame, text="模板信息", padding=10)
-        info_frame.pack(fill=tk.X, pady=(0, 10))
+        info_frame = ttk.LabelFrame(control_frame, text="模板信息", padding=5)
+        info_frame.pack(fill=tk.X, pady=(0, 5))
         
         ttk.Label(info_frame, text="名称:").grid(row=0, column=0, sticky="w", pady=2)
         self.name_var = tk.StringVar(value=self.template_data.get('name', ''))
@@ -92,11 +96,11 @@ class TemplateEditDialog:
         info_frame.columnconfigure(1, weight=1)
         
         # 打印区域管理
-        area_frame = ttk.LabelFrame(control_frame, text="打印区域", padding=10)
-        area_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        area_frame = ttk.LabelFrame(control_frame, text="打印区域", padding=5)
+        area_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 5))
         
         # 区域列表
-        self.area_listbox = tk.Listbox(area_frame, height=6)
+        self.area_listbox = tk.Listbox(area_frame, height=3)
         self.area_listbox.pack(fill=tk.X, pady=(0, 10))
         self.area_listbox.bind('<<ListboxSelect>>', self.on_area_select)
         
@@ -113,54 +117,114 @@ class TemplateEditDialog:
         
         # 左上角坐标
         ttk.Label(prop_frame, text="左上角:").grid(row=0, column=0, sticky="w", columnspan=2)
-        ttk.Label(prop_frame, text="X:").grid(row=1, column=0, sticky="w")
         self.tl_x_var = tk.IntVar()
-        ttk.Entry(prop_frame, textvariable=self.tl_x_var, width=8).grid(row=1, column=1, padx=(5, 10))
-        ttk.Label(prop_frame, text="Y:").grid(row=1, column=2, sticky="w")
         self.tl_y_var = tk.IntVar()
+        ttk.Label(prop_frame, text="X:").grid(row=1, column=0, sticky="w")
+        ttk.Entry(prop_frame, textvariable=self.tl_x_var, width=8).grid(row=1, column=1, padx=(5, 0))
+        ttk.Label(prop_frame, text="Y:").grid(row=1, column=2, sticky="w")
         ttk.Entry(prop_frame, textvariable=self.tl_y_var, width=8).grid(row=1, column=3, padx=(5, 0))
-        ttk.Button(prop_frame, text="拾取", width=4, 
-                  command=lambda: self.start_pick_point("tl")).grid(row=1, column=4, padx=(5, 0))
+        ttk.Button(prop_frame, text="拾取", width=4, command=lambda: self.start_pick_point("tl")).grid(row=1, column=4, padx=(5, 0))
         
         # 右上角坐标
         ttk.Label(prop_frame, text="右上角:").grid(row=2, column=0, sticky="w", columnspan=2)
-        ttk.Label(prop_frame, text="X:").grid(row=3, column=0, sticky="w")
         self.tr_x_var = tk.IntVar()
-        ttk.Entry(prop_frame, textvariable=self.tr_x_var, width=8).grid(row=3, column=1, padx=(5, 10))
-        ttk.Label(prop_frame, text="Y:").grid(row=3, column=2, sticky="w")
         self.tr_y_var = tk.IntVar()
+        ttk.Label(prop_frame, text="X:").grid(row=3, column=0, sticky="w")
+        ttk.Entry(prop_frame, textvariable=self.tr_x_var, width=8).grid(row=3, column=1, padx=(5, 0))
+        ttk.Label(prop_frame, text="Y:").grid(row=3, column=2, sticky="w")
         ttk.Entry(prop_frame, textvariable=self.tr_y_var, width=8).grid(row=3, column=3, padx=(5, 0))
-        ttk.Button(prop_frame, text="拾取", width=4,
-                  command=lambda: self.start_pick_point("tr")).grid(row=3, column=4, padx=(5, 0))
+        ttk.Button(prop_frame, text="拾取", width=4, command=lambda: self.start_pick_point("tr")).grid(row=3, column=4, padx=(5, 0))
         
         # 右下角坐标
         ttk.Label(prop_frame, text="右下角:").grid(row=4, column=0, sticky="w", columnspan=2)
-        ttk.Label(prop_frame, text="X:").grid(row=5, column=0, sticky="w")
         self.br_x_var = tk.IntVar()
-        ttk.Entry(prop_frame, textvariable=self.br_x_var, width=8).grid(row=5, column=1, padx=(5, 10))
-        ttk.Label(prop_frame, text="Y:").grid(row=5, column=2, sticky="w")
         self.br_y_var = tk.IntVar()
+        ttk.Label(prop_frame, text="X:").grid(row=5, column=0, sticky="w")
+        ttk.Entry(prop_frame, textvariable=self.br_x_var, width=8).grid(row=5, column=1, padx=(5, 0))
+        ttk.Label(prop_frame, text="Y:").grid(row=5, column=2, sticky="w")
         ttk.Entry(prop_frame, textvariable=self.br_y_var, width=8).grid(row=5, column=3, padx=(5, 0))
-        ttk.Button(prop_frame, text="拾取", width=4,
-                  command=lambda: self.start_pick_point("br")).grid(row=5, column=4, padx=(5, 0))
+        ttk.Button(prop_frame, text="拾取", width=4, command=lambda: self.start_pick_point("br")).grid(row=5, column=4, padx=(5, 0))
         
         # 左下角坐标
         ttk.Label(prop_frame, text="左下角:").grid(row=6, column=0, sticky="w", columnspan=2)
-        ttk.Label(prop_frame, text="X:").grid(row=7, column=0, sticky="w")
         self.bl_x_var = tk.IntVar()
-        ttk.Entry(prop_frame, textvariable=self.bl_x_var, width=8).grid(row=7, column=1, padx=(5, 10))
-        ttk.Label(prop_frame, text="Y:").grid(row=7, column=2, sticky="w")
         self.bl_y_var = tk.IntVar()
+        ttk.Label(prop_frame, text="X:").grid(row=7, column=0, sticky="w")
+        ttk.Entry(prop_frame, textvariable=self.bl_x_var, width=8).grid(row=7, column=1, padx=(5, 0))
+        ttk.Label(prop_frame, text="Y:").grid(row=7, column=2, sticky="w")
         ttk.Entry(prop_frame, textvariable=self.bl_y_var, width=8).grid(row=7, column=3, padx=(5, 0))
-        ttk.Button(prop_frame, text="拾取", width=4,
-                  command=lambda: self.start_pick_point("bl")).grid(row=7, column=4, padx=(5, 0))
+        ttk.Button(prop_frame, text="拾取", width=4, command=lambda: self.start_pick_point("bl")).grid(row=7, column=4, padx=(5, 0))
         
-        ttk.Button(prop_frame, text="更新区域", command=self.update_area).grid(row=8, column=0, 
-                                                                            columnspan=4, pady=(10, 0))
-        ttk.Button(prop_frame, text="矩形模式", command=self.set_rectangle_mode).grid(row=9, column=0, 
-                                                                                   columnspan=2, pady=(5, 0))
-        ttk.Button(prop_frame, text="自由模式", command=self.set_free_mode).grid(row=9, column=2, 
-                                                                               columnspan=2, pady=(5, 0))
+        ttk.Button(prop_frame, text="更新区域", command=self.update_area).grid(row=9, column=0, columnspan=2, pady=(5, 0))
+        ttk.Button(prop_frame, text="矩形模式", command=self.set_rectangle_mode).grid(row=9, column=2, columnspan=2, pady=(5, 0))
+        ttk.Button(prop_frame, text="自由模式", command=self.set_free_mode).grid(row=9, column=4,  columnspan=2, pady=(5, 0))
+                                                                                
+        # 补充区域管理（镜像填充）
+        mirror_frame = ttk.LabelFrame(control_frame, text="补充区域（镜像填充）", padding=10)
+        mirror_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        
+        # 镜像区域列表
+        self.mirror_listbox = tk.Listbox(mirror_frame, height=3)
+        self.mirror_listbox.pack(fill=tk.X, pady=(0, 10))
+        self.mirror_listbox.bind('<<ListboxSelect>>', self.on_mirror_area_select)
+        
+        # 镜像区域操作按钮
+        mirror_btn_frame = ttk.Frame(mirror_frame)
+        mirror_btn_frame.pack(fill=tk.X)
+        
+        ttk.Button(mirror_btn_frame, text="添加补充区域", command=self.add_mirror_area).pack(side=tk.LEFT)
+        ttk.Button(mirror_btn_frame, text="删除补充区域", command=self.delete_mirror_area).pack(side=tk.RIGHT)
+        
+        # 镜像区域属性
+        mirror_prop_frame = ttk.LabelFrame(mirror_frame, text="补充区域坐标", padding=5)
+        mirror_prop_frame.pack(fill=tk.X, pady=(10, 0))
+        
+        # 左上角坐标
+        ttk.Label(mirror_prop_frame, text="左上角:").grid(row=0, column=0, sticky="w", columnspan=2)
+        ttk.Label(mirror_prop_frame, text="X:").grid(row=1, column=0, sticky="w")
+        self.mirror_tl_x_var = tk.IntVar()
+        ttk.Entry(mirror_prop_frame, textvariable=self.mirror_tl_x_var, width=8).grid(row=1, column=1, padx=(5, 10))
+        ttk.Label(mirror_prop_frame, text="Y:").grid(row=1, column=2, sticky="w")
+        self.mirror_tl_y_var = tk.IntVar()
+        ttk.Entry(mirror_prop_frame, textvariable=self.mirror_tl_y_var, width=8).grid(row=1, column=3, padx=(5, 0))
+        ttk.Button(mirror_prop_frame, text="拾取", width=4, 
+                    command=lambda: self.start_pick_mirror_point("tl")).grid(row=1, column=4, padx=(5, 0))
+        
+        # 右上角坐标
+        ttk.Label(mirror_prop_frame, text="右上角:").grid(row=2, column=0, sticky="w", columnspan=2)
+        ttk.Label(mirror_prop_frame, text="X:").grid(row=3, column=0, sticky="w")
+        self.mirror_tr_x_var = tk.IntVar()
+        ttk.Entry(mirror_prop_frame, textvariable=self.mirror_tr_x_var, width=8).grid(row=3, column=1, padx=(5, 10))
+        ttk.Label(mirror_prop_frame, text="Y:").grid(row=3, column=2, sticky="w")
+        self.mirror_tr_y_var = tk.IntVar()
+        ttk.Entry(mirror_prop_frame, textvariable=self.mirror_tr_y_var, width=8).grid(row=3, column=3, padx=(5, 0))
+        ttk.Button(mirror_prop_frame, text="拾取", width=4,
+                    command=lambda: self.start_pick_mirror_point("tr")).grid(row=3, column=4, padx=(5, 0))
+        
+        # 右下角坐标
+        ttk.Label(mirror_prop_frame, text="右下角:").grid(row=4, column=0, sticky="w", columnspan=2)
+        ttk.Label(mirror_prop_frame, text="X:").grid(row=5, column=0, sticky="w")
+        self.mirror_br_x_var = tk.IntVar()
+        ttk.Entry(mirror_prop_frame, textvariable=self.mirror_br_x_var, width=8).grid(row=5, column=1, padx=(5, 10))
+        ttk.Label(mirror_prop_frame, text="Y:").grid(row=5, column=2, sticky="w")
+        self.mirror_br_y_var = tk.IntVar()
+        ttk.Entry(mirror_prop_frame, textvariable=self.mirror_br_y_var, width=8).grid(row=5, column=3, padx=(5, 0))
+        ttk.Button(mirror_prop_frame, text="拾取", width=4,
+                    command=lambda: self.start_pick_mirror_point("br")).grid(row=5, column=4, padx=(5, 0))
+        
+        # 左下角坐标
+        ttk.Label(mirror_prop_frame, text="左下角:").grid(row=6, column=0, sticky="w", columnspan=2)
+        ttk.Label(mirror_prop_frame, text="X:").grid(row=7, column=0, sticky="w")
+        self.mirror_bl_x_var = tk.IntVar()
+        ttk.Entry(mirror_prop_frame, textvariable=self.mirror_bl_x_var, width=8).grid(row=7, column=1, padx=(5, 10))
+        ttk.Label(mirror_prop_frame, text="Y:").grid(row=7, column=2, sticky="w")
+        self.mirror_bl_y_var = tk.IntVar()
+        ttk.Entry(mirror_prop_frame, textvariable=self.mirror_bl_y_var, width=8).grid(row=7, column=3, padx=(5, 0))
+        ttk.Button(mirror_prop_frame, text="拾取", width=4,
+                    command=lambda: self.start_pick_mirror_point("bl")).grid(row=7, column=4, padx=(5, 0))
+        
+        ttk.Button(mirror_prop_frame, text="更新补充区域", command=self.update_mirror_area).grid(row=8, column=0, 
+                                                                                                    columnspan=4, pady=(10, 0))
         
         # 按钮区域
         button_frame = ttk.Frame(control_frame)
@@ -237,13 +301,11 @@ class TemplateEditDialog:
         self.picking_point = point_type
         self.original_cursor = self.canvas.cget("cursor")
         self.canvas.config(cursor="crosshair")
-        # self.status_label.config(text=f"请在画布上点击选择{point_type}坐标点")
 
     def end_pick_point(self):
         """结束拾取坐标点"""
         self.picking_point = None
         self.canvas.config(cursor=self.original_cursor)
-        # self.status_label.config(text="准备就绪")
 
     def zoom_in(self):
         """放大"""
@@ -360,6 +422,45 @@ class TemplateEditDialog:
             cv2.putText(display_img, f"Area {i+1}", (label_x + 5, label_y + 20),
                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
         
+        # 绘制镜像区域
+        for i, area in enumerate(self.mirror_areas):
+            color = (255, 255, 0) if i == self.current_mirror_area else (0, 255, 255)  # 黄色/青色
+            
+            if 'points' in area:
+                # 四个坐标点模式
+                points = np.array(area['points'], dtype=np.int32)
+                # 应用缩放和偏移
+                scaled_points = []
+                for point in points:
+                    scaled_x = int(point[0] * self.scale_factor)
+                    scaled_y = int(point[1] * self.scale_factor)
+                    scaled_points.append([scaled_x, scaled_y])
+                
+                scaled_points = np.array(scaled_points, dtype=np.int32)
+                cv2.polylines(display_img, [scaled_points], True, color, 2)
+                
+                # 绘制角点
+                for j, point in enumerate(scaled_points):
+                    cv2.circle(display_img, tuple(point), 4, color, -1)
+                    cv2.putText(display_img, str(j+1), (point[0]+5, point[1]-5),
+                               cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1)
+            else:
+                # 兼容旧的矩形模式
+                x, y, w, h = area['x'], area['y'], area['width'], area['height']
+                scaled_x = int(x * self.scale_factor)
+                scaled_y = int(y * self.scale_factor)
+                scaled_w = int(w * self.scale_factor)
+                scaled_h = int(h * self.scale_factor)
+                
+                cv2.rectangle(display_img, (scaled_x, scaled_y), 
+                             (scaled_x + scaled_w, scaled_y + scaled_h), color, 2)
+            
+            # 添加镜像区域标签
+            label_x = int((area.get('x', 0) if 'points' not in area else area['points'][0][0]) * self.scale_factor)
+            label_y = int((area.get('y', 0) if 'points' not in area else area['points'][0][1]) * self.scale_factor)
+            cv2.putText(display_img, f"Mirror {i+1}", (label_x + 5, label_y + 35),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+        
         # 转换为PhotoImage并显示
         pil_img = Image.fromarray(display_img)
         self.photo = ImageTk.PhotoImage(pil_img)
@@ -400,6 +501,21 @@ class TemplateEditDialog:
                 # 矩形模式（兼容）
                 self.area_listbox.insert(tk.END, 
                     f"区域 {i+1}: ({area['x']}, {area['y']}) {area['width']}x{area['height']}")
+        
+        # 更新镜像区域列表
+        self.update_mirror_area_list()
+    
+    def update_mirror_area_list(self):
+        """更新镜像区域列表"""
+        self.mirror_listbox.delete(0, tk.END)
+        for i, area in enumerate(self.mirror_areas):
+            if 'points' in area:
+                points_str = ", ".join([f"({p[0]},{p[1]})" for p in area['points']])
+                self.mirror_listbox.insert(tk.END, f"补充区域 {i+1}: {points_str}")
+            else:
+                # 兼容旧格式
+                self.mirror_listbox.insert(tk.END, 
+                    f"补充区域 {i+1}: ({area['x']}, {area['y']}) {area['width']}x{area['height']}")
     
     def on_area_select(self, event):
         """区域选择事件"""
@@ -464,7 +580,7 @@ class TemplateEditDialog:
             
             # 清空输入框
             for var in [self.tl_x_var, self.tl_y_var, self.tr_x_var, self.tr_y_var,
-                       self.br_x_var, self.br_y_var, self.bl_x_var, self.bl_y_var]:
+                    self.br_x_var, self.br_y_var, self.bl_x_var, self.bl_y_var]:
                 var.set(0)
     
     def update_area(self):
@@ -486,6 +602,92 @@ class TemplateEditDialog:
                     del area[key]
             
             self.update_area_list()
+            self.display_template()
+    
+    def start_pick_mirror_point(self, point_type: str):
+        """开始拾取镜像区域坐标点"""
+        self.picking_point = f"mirror_{point_type}"
+        self.area_type = "mirror"
+        self.original_cursor = self.canvas.cget("cursor")
+        self.canvas.config(cursor="crosshair")
+    
+    def add_mirror_area(self):
+        """添加镜像区域"""
+        new_area = {
+            'points': [[50, 50], [150, 50], [150, 150], [50, 150]]
+        }
+        self.mirror_areas.append(new_area)
+        self.update_mirror_area_list()
+        self.display_template()
+        
+        # 选择新添加的区域
+        self.mirror_listbox.selection_set(len(self.mirror_areas) - 1)
+        self.on_mirror_area_select(None)
+    
+    def delete_mirror_area(self):
+        """删除镜像区域"""
+        if self.current_mirror_area is not None and 0 <= self.current_mirror_area < len(self.mirror_areas):
+            self.mirror_areas.pop(self.current_mirror_area)
+            self.current_mirror_area = None
+            self.update_mirror_area_list()
+            self.display_template()
+            
+            # 清空输入框
+            for var in [self.mirror_tl_x_var, self.mirror_tl_y_var, self.mirror_tr_x_var, self.mirror_tr_y_var,
+                       self.mirror_br_x_var, self.mirror_br_y_var, self.mirror_bl_x_var, self.mirror_bl_y_var]:
+                var.set(0)
+    
+    def on_mirror_area_select(self, event):
+        """镜像区域选择事件"""
+        selection = self.mirror_listbox.curselection()
+        if selection:
+            self.current_mirror_area = selection[0]
+            area = self.mirror_areas[self.current_mirror_area]
+            
+            if 'points' in area:
+                # 四点模式
+                points = area['points']
+                self.mirror_tl_x_var.set(points[0][0])  # 左上
+                self.mirror_tl_y_var.set(points[0][1])
+                self.mirror_tr_x_var.set(points[1][0])  # 右上
+                self.mirror_tr_y_var.set(points[1][1])
+                self.mirror_br_x_var.set(points[2][0])  # 右下
+                self.mirror_br_y_var.set(points[2][1])
+                self.mirror_bl_x_var.set(points[3][0])  # 左下
+                self.mirror_bl_y_var.set(points[3][1])
+            else:
+                # 矩形模式（兼容）- 转换为四点
+                x, y, w, h = area['x'], area['y'], area['width'], area['height']
+                self.mirror_tl_x_var.set(x)      # 左上
+                self.mirror_tl_y_var.set(y)
+                self.mirror_tr_x_var.set(x + w)  # 右上
+                self.mirror_tr_y_var.set(y)
+                self.mirror_br_x_var.set(x + w)  # 右下
+                self.mirror_br_y_var.set(y + h)
+                self.mirror_bl_x_var.set(x)      # 左下
+                self.mirror_bl_y_var.set(y + h)
+            
+            self.display_template()
+    
+    def update_mirror_area(self):
+        """更新镜像区域属性"""
+        if self.current_mirror_area is not None and 0 <= self.current_mirror_area < len(self.mirror_areas):
+            area = self.mirror_areas[self.current_mirror_area]
+            
+            # 更新四个坐标点
+            area['points'] = [
+                [self.mirror_tl_x_var.get(), self.mirror_tl_y_var.get()],  # 左上
+                [self.mirror_tr_x_var.get(), self.mirror_tr_y_var.get()],  # 右上
+                [self.mirror_br_x_var.get(), self.mirror_br_y_var.get()],  # 右下
+                [self.mirror_bl_x_var.get(), self.mirror_bl_y_var.get()]   # 左下
+            ]
+            
+            # 移除旧的矩形属性（如果存在）
+            for key in ['x', 'y', 'width', 'height']:
+                if key in area:
+                    del area[key]
+            
+            self.update_mirror_area_list()
             self.display_template()
     
     def on_canvas_click(self, event):
@@ -517,6 +719,19 @@ class TemplateEditDialog:
             elif self.picking_point == "bl":
                 self.bl_x_var.set(img_x)
                 self.bl_y_var.set(img_y)
+            # 镜像区域坐标拾取
+            elif self.picking_point == "mirror_tl":
+                self.mirror_tl_x_var.set(img_x)
+                self.mirror_tl_y_var.set(img_y)
+            elif self.picking_point == "mirror_tr":
+                self.mirror_tr_x_var.set(img_x)
+                self.mirror_tr_y_var.set(img_y)
+            elif self.picking_point == "mirror_br":
+                self.mirror_br_x_var.set(img_x)
+                self.mirror_br_y_var.set(img_y)
+            elif self.picking_point == "mirror_bl":
+                self.mirror_bl_x_var.set(img_x)
+                self.mirror_bl_y_var.set(img_y)
             
             self.end_pick_point()
             return
@@ -768,10 +983,25 @@ class TemplateEditDialog:
             
             converted_areas.append(converted_area)
         
+        # 转换镜像区域格式
+        converted_mirror_areas = []
+        for area in self.mirror_areas:
+            if 'points' in area:
+                converted_mirror_areas.append({
+                    'points': area['points']
+                })
+            else:
+                # 兼容旧格式
+                x, y, w, h = area['x'], area['y'], area['width'], area['height']
+                converted_mirror_areas.append({
+                    'points': [[x, y], [x+w, y], [x+w, y+h], [x, y+h]]
+                })
+
         self.result = {
             'name': name,
             'category': category,
-            'print_areas': converted_areas
+            'print_areas': converted_areas,
+            'mirror_areas': converted_mirror_areas
         }
         
         self.dialog.destroy()

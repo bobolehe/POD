@@ -355,8 +355,13 @@ class PODPreviewSystem:
         try:
             # 加载模板图像
             img_path = self.current_template['image_path']
+            print(img_path)
+
             if os.path.exists(img_path):
-                template_img = cv2.imread(img_path)
+                with open(img_path, 'rb') as f:
+                    img_array = np.frombuffer(f.read(), np.uint8)
+                    img = cv2.imdecode(img_array, cv2.IMREAD_UNCHANGED)
+                template_img = img
             else:
                 # 如果文件不存在，创建默认模板
                 template_img = self.create_default_template_image()
@@ -392,11 +397,14 @@ class PODPreviewSystem:
         try:
             # 获取file_path 文件名称
             template_name = os.path.basename(file_path)
-            img_path = f"templates/{template_name.replace(' ', '_')}.png"
+            img_path = f"templates/{template_name.replace(' ', '_')}"
 
             # 使用numpy读取图片，避免中文路径问题
             with open(file_path, 'rb') as f:
                 img_array = np.frombuffer(f.read(), np.uint8)
+                # 使用numpy保存图片，避免中文路径问题
+                with open(img_path, 'wb') as f:
+                    f.write(img_array.tobytes())
                 img = cv2.imdecode(img_array, cv2.IMREAD_UNCHANGED)
 
             cv2.imwrite(img_path, img)
@@ -414,7 +422,8 @@ class PODPreviewSystem:
                     template_data['name'],
                     template_data['category'],
                     img_path,
-                    template_data['print_areas']
+                    template_data['print_areas'],
+                    template_data.get('mirror_areas', [])
                 ):
                     self.template_manager.load_templates()
                     self.load_templates_list()
@@ -515,37 +524,66 @@ class PODPreviewSystem:
         
         # 加载模板图像
         if os.path.exists(self.current_template['image_path']):
-            template_img = cv2.imread(self.current_template['image_path'])
+            with open(self.current_template['image_path'], 'rb') as f:
+                img_array = np.frombuffer(f.read(), np.uint8)
+                template_img = cv2.imdecode(img_array, cv2.IMREAD_UNCHANGED)
         else:
             template_img = self.create_default_template_image()
         
-        # 复制模板图像
-        result_img = template_img.copy()
+        # 复制模板图像并确保是BGRA格式
+        if len(template_img.shape) == 2:  # 灰度图
+            result_img = cv2.cvtColor(template_img, cv2.COLOR_GRAY2BGRA)
+        elif template_img.shape[2] == 3:  # BGR图
+            result_img = cv2.cvtColor(template_img, cv2.COLOR_BGR2BGRA)
+        elif template_img.shape[2] == 4:  # BGRA图
+            result_img = template_img.copy()
         
         # 处理每个打印区域
         for area in self.current_template['print_areas']:
-            print(area)
             processed_pattern = self.apply_pattern_effects()
             
-            # 调整图案大小适应打印区域
-            area_size = (area['width'], area['height'])
-            resized_pattern = self.image_processor.resize_with_aspect_ratio(
-                processed_pattern, area_size, keep_aspect=True)
-            # 应用透视变换
+            # 计算打印区域的实际尺寸
+            points = np.array(area['points'], dtype=np.float32)
+            
+            # 计算区域的边界框
+            min_x, min_y = np.min(points, axis=0)
+            max_x, max_y = np.max(points, axis=0)
+            area_width = int(max_x - min_x)
+            area_height = int(max_y - min_y)
+            
+            # 直接调整图案大小到区域尺寸，不保持宽高比以完全填充
+            resized_pattern = cv2.resize(processed_pattern, (area_width, area_height), 
+                                       interpolation=cv2.INTER_LANCZOS4)
+            
+            # 设置透视变换的源点（调整后图案的四个角点）
             src_points = np.array([
                 [0, 0],
-                [resized_pattern.shape[1], 0],
-                [resized_pattern.shape[1], resized_pattern.shape[0]],
-                [0, resized_pattern.shape[0]]
+                [area_width, 0],
+                [area_width, area_height],
+                [0, area_height]
             ], dtype=np.float32)
             
-            dst_points = np.array(area['points'], dtype=np.float32)
+            # 目标点就是打印区域的points
+            dst_points = points
+            
+            # 应用透视变换
             resized_pattern = self.image_processor.perspective_transform(
                 resized_pattern, src_points, dst_points)
             
             # 合成到模板上
             result_img = self.composite_pattern_on_template(
                 result_img, resized_pattern, area)
+        
+        # 处理镜像区域（补充区域）
+        mirror_areas = self.current_template.get('mirror_areas', [])
+        if mirror_areas and self.current_pattern is not None:
+            # 获取处理后的图案作为镜像源
+            processed_pattern = self.apply_pattern_effects()
+            
+            for mirror_area in mirror_areas:
+                if 'points' in mirror_area:
+                    # 使用智能镜像填充算法，传递图案内容作为源图像
+                    result_img = self.image_processor.smart_mirror_fill(result_img, mirror_area['points'], processed_pattern)
         
         self.current_preview = result_img
         self.display_preview(result_img)
@@ -572,66 +610,88 @@ class PODPreviewSystem:
         return pattern
     
     def composite_pattern_on_template(self, template: np.ndarray, pattern: np.ndarray, 
-                                    area: Dict) -> np.ndarray:
+                                     area: Dict) -> np.ndarray:
         """将图案合成到模板上"""
-        if pattern.size == 0:
-            return template
-        
-        # 确保图案不超出打印区域
-        area_h, area_w = area['height'], area['width']
-        pattern_h, pattern_w = pattern.shape[:2]
-        
-        # 计算放置位置（居中）
-        start_x = area['x'] + (area_w - pattern_w) // 2
-        start_y = area['y'] + (area_h - pattern_h) // 2
-        
-        # 确保坐标在有效范围内
-        start_x = max(0, min(start_x, template.shape[1] - pattern_w))
-        start_y = max(0, min(start_y, template.shape[0] - pattern_h))
-        
-        # 计算实际可放置的区域
-        end_x = min(start_x + pattern_w, template.shape[1])
-        end_y = min(start_y + pattern_h, template.shape[0])
-        
-        actual_w = end_x - start_x
-        actual_h = end_y - start_y
-        
-        if actual_w <= 0 or actual_h <= 0:
-            return template
-        
-        # 获取要放置的图案区域
-        pattern_roi = pattern[:actual_h, :actual_w]
-        
-        # 如果图案有alpha通道，进行alpha合成
-        if len(pattern_roi.shape) == 3 and pattern_roi.shape[2] == 4:
-            # Alpha合成
-            template_roi = template[start_y:end_y, start_x:end_x]
-            
-            # 确保模板区域有alpha通道
-            if template_roi.shape[2] == 3:
-                alpha = np.ones((template_roi.shape[0], template_roi.shape[1], 1), 
-                              dtype=template_roi.dtype) * 255
-                template_roi = np.concatenate([template_roi, alpha], axis=2)
-            
-            # 执行alpha合成
-            blended = self.image_processor.blend_alpha(template_roi, pattern_roi)
-            
-            # 如果原模板只有3个通道，去掉alpha通道
-            if template.shape[2] == 3:
-                blended = blended[:, :, :3]
-            
-            template[start_y:end_y, start_x:end_x] = blended
-        else:
-            # 直接替换
-            if len(pattern_roi.shape) == 3 and pattern_roi.shape[2] == 3:
-                template[start_y:end_y, start_x:end_x] = pattern_roi
+        try:
+            if 'points' in area:
+                # 新的四点模式
+                points = np.array(area['points'], dtype=np.float32)
+                
+                # 计算边界框
+                min_x = int(points[:, 0].min())
+                max_x = int(points[:, 0].max())
+                min_y = int(points[:, 1].min())
+                max_y = int(points[:, 1].max())
+                
+                # 确保边界在模板范围内
+                min_x = max(0, min_x)
+                min_y = max(0, min_y)
+                max_x = min(template.shape[1], max_x)
+                max_y = min(template.shape[0], max_y)
+                
+                # 获取模板区域
+                template_region = template[min_y:max_y, min_x:max_x]
+                
+                # 如果图案尺寸与模板区域不匹配，调整图案尺寸
+                region_height, region_width = template_region.shape[:2]
+                if pattern.shape[:2] != (region_height, region_width):
+                    pattern = cv2.resize(pattern, (region_width, region_height))
+                
+                # 确保通道数匹配
+                if len(template_region.shape) == 3 and len(pattern.shape) == 3:
+                    if template_region.shape[2] != pattern.shape[2]:
+                        if template_region.shape[2] == 4 and pattern.shape[2] == 3:
+                            # 模板有alpha通道，图案没有，给图案添加alpha通道
+                            alpha = np.ones((pattern.shape[0], pattern.shape[1], 1), dtype=pattern.dtype) * 255
+                            pattern = np.concatenate([pattern, alpha], axis=2)
+                        elif template_region.shape[2] == 3 and pattern.shape[2] == 4:
+                            # 图案有alpha通道，模板没有，使用图案的RGB通道
+                            pattern = pattern[:, :, :3]
+                
+                # Alpha混合
+                if pattern.shape[2] == 4:  # 图案有alpha通道
+                    alpha = pattern[:, :, 3:4] / 255.0
+                    
+                    # 混合RGB通道
+                    for c in range(3):
+                        template_region[:, :, c] = (
+                            template_region[:, :, c] * (1 - alpha[:, :, 0]) +
+                            pattern[:, :, c] * alpha[:, :, 0]
+                        ).astype(template_region.dtype)
+                    
+                    # 如果模板也有alpha通道，更新alpha
+                    if template_region.shape[2] == 4:
+                        template_region[:, :, 3] = np.maximum(
+                            template_region[:, :, 3], 
+                            pattern[:, :, 3]
+                        )
+                else:
+                    # 直接替换
+                    template_region[:] = pattern
+                
+                # 将处理后的区域放回模板
+                template[min_y:max_y, min_x:max_x] = template_region
+                
             else:
-                # 灰度图转换为彩色
-                if len(pattern_roi.shape) == 2:
-                    pattern_roi = cv2.cvtColor(pattern_roi, cv2.COLOR_GRAY2BGR)
-                template[start_y:end_y, start_x:end_x] = pattern_roi
-        
-        return template
+                # 旧的矩形模式（向后兼容）
+                x, y = int(area['x']), int(area['y'])
+                w, h = int(area['width']), int(area['height'])
+                
+                # 调整图案大小
+                pattern_resized = cv2.resize(pattern, (w, h))
+                
+                # 确保坐标在模板范围内
+                x = max(0, min(x, template.shape[1] - w))
+                y = max(0, min(y, template.shape[0] - h))
+                
+                # 合成图案
+                template[y:y+h, x:x+w] = pattern_resized
+            
+            return template
+            
+        except Exception as e:
+            print(f"合成图案时出错: {e}")
+            return template
     
     def display_preview(self, img: np.ndarray):
         """显示预览图像"""
@@ -696,7 +756,8 @@ class PODPreviewSystem:
                 self.current_template['name'],
                 template_data['category'],
                 self.current_template['image_path'],
-                template_data['print_areas']
+                template_data['print_areas'],
+                template_data['mirror_areas']
             ):
                 self.template_manager.load_templates()
                 messagebox.showinfo("成功", "模板更新成功!")
