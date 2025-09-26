@@ -308,7 +308,7 @@ class ImageProcessor:
                 perspective_matrix, 
                 (w, h),
                 flags=cv2.INTER_LINEAR,
-                borderMode=cv2.BORDER_CONSTANT,
+                borderMode=cv2.BORDER_REPLICATE,
                 borderValue=(0, 0, 0, 0) if len(mirrored.shape) == 3 and mirrored.shape[2] == 4 else 0
             )
             
@@ -393,55 +393,49 @@ class ImageProcessor:
             
             # 判断采样区域
             if center_x < w * 0.3:  # 左侧镜像
-                # 寻找主图案区域（通常在右侧）
-                # 从镜像区域的右边开始寻找非空内容
                 search_start = max_x + 10
                 search_end = min(search_start + area_width * 3, w)
                 
                 if search_end > search_start and search_end <= w:
-                    # 从主图案的左边缘采样
+                    # 从主图案的左边缘采样，保持原始高度
                     sample_region = result[min_y:max_y, search_start:search_end].copy()
                     
-                    # 如果采样区域太大，只取靠近边缘的部分
-                    if sample_region.shape[1] > area_width * 2:
-                        sample_region = sample_region[:, :area_width * 2]
+                    # 保持原始宽高比，只取所需宽度
+                    if sample_region.shape[1] > area_width:
+                        sample_region = sample_region[:, :area_width]
                     
-                    # 水平镜像
+                    # 水平镜像，不调整大小
                     mirrored = cv2.flip(sample_region, 1)
-                    
-                    # 调整大小以适应镜像区域
-                    if mirrored.shape[:2] != (area_height, area_width):
-                        mirrored = cv2.resize(mirrored, (area_width, area_height), 
-                                            interpolation=cv2.INTER_LINEAR)
                 else:
-                    # 如果找不到合适的采样区域，创建渐变填充
                     mirrored = np.ones((area_height, area_width, result.shape[2]), dtype=result.dtype) * 200
             
             else:  # 右侧或其他位置
-                # 类似处理
                 search_end = min_x - 10
-                search_start = max(0, search_end - area_width * 3)
+                search_start = max(0, search_end - area_width)  # 只取所需宽度
                 
                 if search_start < search_end:
                     sample_region = result[min_y:max_y, search_start:search_end].copy()
-                    if sample_region.shape[1] > area_width * 2:
-                        sample_region = sample_region[:, -area_width * 2:]
                     mirrored = cv2.flip(sample_region, 1)
-                    if mirrored.shape[:2] != (area_height, area_width):
-                        mirrored = cv2.resize(mirrored, (area_width, area_height), 
-                                            interpolation=cv2.INTER_LINEAR)
                 else:
                     mirrored = np.ones((area_height, area_width, result.shape[2]), dtype=result.dtype) * 200
             
             # 应用透视变换以适应梯形/平行四边形区域
+            # 计算源图像的四个角点
             src_points = np.float32([
                 [0, 0],
-                [area_width - 1, 0],
-                [area_width - 1, area_height - 1],
-                [0, area_height - 1]
+                [mirrored.shape[1], 0],
+                [mirrored.shape[1], mirrored.shape[0]],
+                [0, mirrored.shape[0]]
             ])
             
-            dst_points = points.astype(np.float32)
+            # 计算目标区域的实际形状
+            # 根据四个角点的相对位置计算变换
+            dst_points = np.array([
+                points[0],  # 左上
+                points[1],  # 右上
+                points[2],  # 右下
+                points[3]   # 左下
+            ], dtype=np.float32)
             
             # 计算透视变换矩阵
             M = cv2.getPerspectiveTransform(src_points, dst_points)
@@ -450,7 +444,7 @@ class ImageProcessor:
             warped = cv2.warpPerspective(
                 mirrored, M, (w, h),
                 flags=cv2.INTER_LINEAR,
-                borderMode=cv2.BORDER_CONSTANT
+                borderMode=cv2.BORDER_REPLICATE
             )
             
             # 创建掩码并合并
@@ -458,15 +452,15 @@ class ImageProcessor:
             cv2.fillPoly(mask, [points.astype(np.int32)], 255)
             
             # 添加边缘羽化以获得更自然的过渡
-            mask_blurred = cv2.GaussianBlur(mask, (5, 5), 0)
+            mask_blurred = cv2.GaussianBlur(mask, (7, 7), 0)  # 增加模糊半径从5到7
             alpha = mask_blurred.astype(float) / 255.0
-            
-            # 混合图像
+
+            # 混合图像时使用更平滑的过渡
             if len(result.shape) == 3:
                 for c in range(result.shape[2]):
-                    result[:, :, c] = (1 - alpha) * result[:, :, c] + alpha * warped[:, :, c]
+                    result[:, :, c] = np.where(mask > 0, warped[:, :, c] * alpha + result[:, :, c] * (1 - alpha), result[:, :, c])
             else:
-                result = (1 - alpha) * result + alpha * warped
+                result = np.where(mask > 0,  warped * alpha + result * (1 - alpha), result)
             
             result = result.astype(image.dtype)
             
