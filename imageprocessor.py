@@ -174,179 +174,174 @@ class ImageProcessor:
         result = image.copy()
         h, w = image.shape[:2]
         
-        # 如果没有提供源图像，使用输入图像
-        if source_image is None:
-            source_image = image
-
-        # 创建区域掩码
-        points = np.array(area_points, dtype=np.int32)
-        mask = np.zeros((h, w), dtype=np.uint8)
-        cv2.fillPoly(mask, [points], 255)
+        # 将点坐标转换为numpy数组
+        points = np.array(area_points, dtype=np.float32)
+        
+        # 确保所有点都在图像范围内
+        points[:, 0] = np.clip(points[:, 0], 0, w - 1)
+        points[:, 1] = np.clip(points[:, 1], 0, h - 1)
         
         # 获取区域边界框
-        x_coords = [p[0] for p in area_points]
-        y_coords = [p[1] for p in area_points]
-        min_x, max_x = max(0, min(x_coords)), min(w-1, max(x_coords))
-        min_y, max_y = max(0, min(y_coords)), min(h-1, max(y_coords))
+        min_x = int(np.min(points[:, 0]))
+        max_x = int(np.max(points[:, 0]))
+        min_y = int(np.min(points[:, 1]))
+        max_y = int(np.max(points[:, 1]))
         
         # 计算区域尺寸
         area_width = max_x - min_x + 1
         area_height = max_y - min_y + 1
         
-        # 获取源图像尺寸
-        src_h, src_w = source_image.shape[:2]
-        
-        print(f"透视镜像填充: 区域尺寸 {area_width}x{area_height}, 位置 ({min_x},{min_y})-({max_x},{max_y})")
-        print(f"模板尺寸: {w}x{h}, 图案尺寸: {src_w}x{src_h}")
+        print(f"镜像填充区域: 尺寸 {area_width}x{area_height}, 位置 ({min_x},{min_y})-({max_x},{max_y})")
         
         try:
-            # 步骤1: 根据区域大小裁剪源图像
-            # 计算裁剪区域，保持宽高比
-            aspect_ratio = area_width / area_height
-            src_aspect_ratio = src_w / src_h
+            # 智能判断镜像方向和取样位置
+            # 通过分析四个角点的位置关系判断这是哪个边的镜像区域
             
-            if src_aspect_ratio > aspect_ratio:
-                # 源图像更宽，按高度裁剪
-                crop_height = src_h
-                crop_width = int(crop_height * aspect_ratio)
-                crop_x = max(0, (src_w - crop_width) // 2)
-                crop_y = 0
+            # 计算区域的中心点
+            center_x = np.mean(points[:, 0])
+            center_y = np.mean(points[:, 1])
+            
+            # 判断是左侧还是右侧的镜像区域
+            # 通常书脊在左侧，所以镜像区域在主图案的左边
+            is_left_side = center_x < w / 3  # 如果中心在左1/3区域，认为是左侧镜像
+            
+            # 查找主要的打印区域（通常是最大的那个）
+            main_print_area = None
+            if hasattr(image, 'main_print_area_bounds'):
+                # 如果有预先定义的主打印区域
+                main_print_area = image.main_print_area_bounds
             else:
-                # 源图像更高，按宽度裁剪
-                crop_width = src_w
-                crop_height = int(crop_width / aspect_ratio)
-                crop_x = 0
-                crop_y = max(0, (src_h - crop_height) // 2)
+                # 尝试自动检测主打印区域
+                # 假设主打印区域在图像的右侧2/3部分
+                main_area_left = int(w * 0.3)
+                main_area_right = w - 50  # 留一些边距
+                main_area_top = 50
+                main_area_bottom = h - 50
             
-            # 确保裁剪区域在源图像范围内
-            crop_x = max(0, min(crop_x, src_w - 1))
-            crop_y = max(0, min(crop_y, src_h - 1))
-            crop_width = min(crop_width, src_w - crop_x)
-            crop_height = min(crop_height, src_h - crop_y)
+            # 从结果图像中取样（已经包含了图案）
+            if source_image is not None and source_image.shape[:2] != image.shape[:2]:
+                # 如果提供了源图像且尺寸不同，使用源图像
+                sample_source = source_image
+            else:
+                # 使用当前的结果图像（已包含图案）
+                sample_source = result
             
-            # 裁剪源图像
-            cropped_source = source_image[crop_y:crop_y + crop_height, crop_x:crop_x + crop_width]
+            # 根据镜像区域的位置，从主图案的边缘取样
+            if is_left_side:
+                # 左侧镜像区域：取主图案的左边缘
+                # 计算取样宽度（通常取镜像区域宽度的2-3倍，以获得更多细节）
+                sample_width = min(area_width * 2, int(w * 0.1))  # 最多取图像宽度的10%
+                
+                # 找到主图案的左边缘位置
+                # 通过寻找非背景色的最左边界
+                sample_left = main_area_left if 'main_area_left' in locals() else int(w * 0.3)
+                sample_right = sample_left + sample_width
+                
+                # 取样区域：主图案的左边缘
+                if sample_right <= sample_source.shape[1]:
+                    sampled_edge = sample_source[min_y:max_y, sample_left:sample_right].copy()
+                else:
+                    sampled_edge = sample_source[min_y:max_y, :area_width].copy()
+                
+                print(f"从位置 ({sample_left}, {min_y}) 取样，尺寸 {sampled_edge.shape}")
+                
+                # 水平镜像
+                mirrored = cv2.flip(sampled_edge, 1)
+                
+            else:
+                # 右侧镜像区域：取主图案的右边缘
+                sample_width = min(area_width * 2, int(w * 0.1))
+                
+                # 找到主图案的右边缘位置
+                sample_right = main_area_right if 'main_area_right' in locals() else w - 50
+                sample_left = max(0, sample_right - sample_width)
+                
+                # 取样区域：主图案的右边缘
+                if sample_left >= 0:
+                    sampled_edge = sample_source[min_y:max_y, sample_left:sample_right].copy()
+                else:
+                    sampled_edge = sample_source[min_y:max_y, -area_width:].copy()
+                
+                print(f"从位置 ({sample_left}, {min_y}) 取样，尺寸 {sampled_edge.shape}")
+                
+                # 水平镜像
+                mirrored = cv2.flip(sampled_edge, 1)
             
-            print(f"裁剪源图像: ({crop_x},{crop_y}) 尺寸 {crop_width}x{crop_height}")
+            # 调整镜像图像到目标区域大小
+            if mirrored.shape[:2] != (area_height, area_width):
+                mirrored = cv2.resize(mirrored, (area_width, area_height), 
+                                    interpolation=cv2.INTER_LINEAR)
             
-            # 步骤2: 对裁剪的图像进行镜像处理
-            mirrored_source = cv2.flip(cropped_source, 1)  # 水平镜像
+            # 确保图像格式匹配
+            if len(result.shape) != len(mirrored.shape):
+                if len(result.shape) == 3 and len(mirrored.shape) == 2:
+                    mirrored = cv2.cvtColor(mirrored, cv2.COLOR_GRAY2BGR)
+                elif len(result.shape) == 2 and len(mirrored.shape) == 3:
+                    mirrored = cv2.cvtColor(mirrored, cv2.COLOR_BGR2GRAY)
+            elif len(result.shape) == 3 and len(mirrored.shape) == 3:
+                if result.shape[2] != mirrored.shape[2]:
+                    if result.shape[2] == 3 and mirrored.shape[2] == 4:
+                        mirrored = mirrored[:, :, :3]
+                    elif result.shape[2] == 4 and mirrored.shape[2] == 3:
+                        alpha = np.ones((mirrored.shape[0], mirrored.shape[1], 1), 
+                                    dtype=mirrored.dtype) * 255
+                        mirrored = np.concatenate([mirrored, alpha], axis=2)
             
-            # 步骤3: 将镜像图像缩放到区域大小
-            resized_mirror = cv2.resize(mirrored_source, (area_width, area_height), interpolation=cv2.INTER_LINEAR)
-            
-            print(f"图像格式调试: 原图形状 {image.shape}, 裁剪后 {cropped_source.shape}, 镜像后 {mirrored_source.shape}, 缩放后 {resized_mirror.shape}")
-            
-            # 步骤4: 使用透视变换将镜像图像映射到坐标区域
-            # 定义源点（矩形区域的四个角点）
+            # 应用透视变换
+            # 源点（镜像图像的四个角）
             src_points = np.float32([
-                [0, 0],                           # 左上
-                [area_width - 1, 0],              # 右上
-                [area_width - 1, area_height - 1], # 右下
-                [0, area_height - 1]              # 左下
+                [0, 0],
+                [area_width - 1, 0],
+                [area_width - 1, area_height - 1],
+                [0, area_height - 1]
             ])
             
-            # 目标点（实际的区域坐标，相对于边界框）
-            dst_points = np.float32([
-                [area_points[0][0] - min_x, area_points[0][1] - min_y],  # 左上
-                [area_points[1][0] - min_x, area_points[1][1] - min_y],  # 右上
-                [area_points[2][0] - min_x, area_points[2][1] - min_y],  # 右下
-                [area_points[3][0] - min_x, area_points[3][1] - min_y]   # 左下
-            ])
+            # 目标点
+            dst_points = points.astype(np.float32)
             
             # 计算透视变换矩阵
             perspective_matrix = cv2.getPerspectiveTransform(src_points, dst_points)
             
             # 应用透视变换
-            transformed_mirror = cv2.warpPerspective(
-                resized_mirror, 
+            transformed = cv2.warpPerspective(
+                mirrored, 
                 perspective_matrix, 
-                (area_width, area_height),
+                (w, h),
                 flags=cv2.INTER_LINEAR,
-                borderMode=cv2.BORDER_TRANSPARENT
+                borderMode=cv2.BORDER_CONSTANT,
+                borderValue=(0, 0, 0, 0) if len(mirrored.shape) == 3 and mirrored.shape[2] == 4 else 0
             )
             
-            print(f"透视变换完成，变换矩阵形状: {perspective_matrix.shape}")
-            print(f"变换后图像形状: {transformed_mirror.shape}, 数据类型: {transformed_mirror.dtype}")
+            # 创建掩码
+            mask = np.zeros((h, w), dtype=np.uint8)
+            cv2.fillPoly(mask, [points.astype(np.int32)], 255)
             
-            # 步骤5: 将变换后的镜像图像应用到结果图像
-            for y in range(area_height):
-                for x in range(area_width):
-                    img_y = min_y + y
-                    img_x = min_x + x
-                    if (0 <= img_y < h and 0 <= img_x < w and 
-                        mask[img_y, img_x] > 0 and 
-                        y < transformed_mirror.shape[0] and x < transformed_mirror.shape[1]):
-                        
-                        # 获取变换后的像素值
-                        pixel_value = transformed_mirror[y, x]
-                        
-                        # 检查像素是否有效（非零或非透明）
-                        is_valid_pixel = False
-                        
-                        if len(transformed_mirror.shape) == 3:
-                            if transformed_mirror.shape[2] == 4:  # RGBA
-                                if pixel_value[3] > 0:  # 非透明
-                                    pixel_value = pixel_value[:3]  # 只取RGB
-                                    is_valid_pixel = True
-                            else:  # RGB
-                                if np.any(pixel_value > 0):  # 非全黑
-                                    is_valid_pixel = True
-                        else:  # 灰度
-                            if pixel_value > 0:
-                                is_valid_pixel = True
-                        
-                        # 确保像素值与结果图像通道数匹配
-                        if is_valid_pixel:
-                            try:
-                                # 获取结果图像和像素值的维度信息
-                                result_channels = result.shape[2] if len(result.shape) == 3 else 1
-                                pixel_channels = len(pixel_value) if hasattr(pixel_value, '__len__') else 1
-                                
-                                if result_channels == pixel_channels:
-                                    # 通道数匹配，直接赋值
-                                    result[img_y, img_x] = pixel_value
-                                elif result_channels == 3 and pixel_channels == 1:
-                                    # 结果是RGB，像素是灰度
-                                    result[img_y, img_x] = [pixel_value, pixel_value, pixel_value]
-                                elif result_channels == 4 and pixel_channels == 3:
-                                    # 结果是RGBA，像素是RGB
-                                    result[img_y, img_x] = np.append(pixel_value, 255)
-                                elif result_channels == 1 and pixel_channels == 3:
-                                    # 结果是灰度，像素是RGB
-                                    gray_value = np.mean(pixel_value)
-                                    result[img_y, img_x] = gray_value
-                                elif result_channels == 3 and pixel_channels >= 3:
-                                    # 结果是RGB，像素有更多通道
-                                    result[img_y, img_x] = pixel_value[:3]
-                                else:
-                                    # 其他情况，尝试强制转换
-                                    if result_channels == 3:
-                                        if isinstance(pixel_value, (int, float, np.integer, np.floating)):
-                                            result[img_y, img_x] = [pixel_value, pixel_value, pixel_value]
-                                        else:
-                                            result[img_y, img_x] = pixel_value[:3] if len(pixel_value) >= 3 else [pixel_value[0], pixel_value[0], pixel_value[0]]
-                                    else:
-                                        result[img_y, img_x] = pixel_value
-                                        
-                            except (ValueError, IndexError) as e:
-                                # 如果赋值失败，跳过这个像素
-                                print(f"像素赋值失败 ({img_x},{img_y}): {e}, 像素值: {pixel_value}, 结果形状: {result.shape}")
-                                continue
+            # 合并到结果图像
+            if len(result.shape) == 3:
+                for c in range(result.shape[2]):
+                    result[:, :, c] = np.where(mask > 0, transformed[:, :, c], result[:, :, c])
+            else:
+                result = np.where(mask > 0, transformed, result)
             
-            print("透视镜像填充完成")
+            print("边缘镜像填充完成")
             
         except Exception as e:
-            print(f"透视镜像填充出错: {e}, 使用边缘颜色填充")
-            # 如果出错，使用边缘颜色填充
-            border_mask = cv2.dilate(mask, np.ones((3,3), np.uint8)) - mask
-            if np.sum(border_mask) > 0:
-                if len(image.shape) == 3:
-                    avg_color = np.mean(image[border_mask > 0], axis=0)
-                    result[mask > 0] = avg_color
+            print(f"镜像填充出错: {e}")
+            import traceback
+            traceback.print_exc()
+            
+            # 备用方案：使用简单的颜色填充
+            try:
+                mask = np.zeros((h, w), dtype=np.uint8)
+                cv2.fillPoly(mask, [points.astype(np.int32)], 255)
+                
+                # 使用灰色填充
+                if len(result.shape) == 3:
+                    result[mask > 0] = [128, 128, 128]
                 else:
-                    avg_color = np.mean(image[border_mask > 0])
-                    result[mask > 0] = avg_color
+                    result[mask > 0] = 128
+            except Exception as e2:
+                print(f"备用填充也失败: {e2}")
         
         return result
     
@@ -363,6 +358,123 @@ class ImageProcessor:
         Returns:
             填充后的图像
         """
-        # 直接调用简化的镜像填充方法
-        return ImageProcessor.mirror_fill_area(image, area_points, source_image)
+        if len(area_points) != 4:
+            return image
+        
+        result = image.copy()
+        h, w = image.shape[:2]
+        
+        # 将点坐标转换为numpy数组
+        points = np.array(area_points, dtype=np.float32)
+        
+        # 分析镜像区域的形状特征
+        # 通常书脊/侧面是一个梯形或平行四边形
+        left_edge_height = np.linalg.norm(points[3] - points[0])  # 左边缘高度
+        right_edge_height = np.linalg.norm(points[2] - points[1])  # 右边缘高度
+        top_edge_width = np.linalg.norm(points[1] - points[0])    # 上边缘宽度
+        bottom_edge_width = np.linalg.norm(points[2] - points[3]) # 下边缘宽度
+        
+        # 判断是垂直的侧面还是水平的侧面
+        is_vertical = (left_edge_height + right_edge_height) > (top_edge_width + bottom_edge_width)
+        
+        # 获取镜像区域的边界
+        min_x = int(np.min(points[:, 0]))
+        max_x = int(np.max(points[:, 0]))
+        min_y = int(np.min(points[:, 1]))
+        max_y = int(np.max(points[:, 1]))
+        
+        area_width = max_x - min_x
+        area_height = max_y - min_y
+        
+        try:
+            # 智能选择采样区域
+            # 根据镜像区域的位置，决定从哪里采样
+            center_x = np.mean(points[:, 0])
+            
+            # 判断采样区域
+            if center_x < w * 0.3:  # 左侧镜像
+                # 寻找主图案区域（通常在右侧）
+                # 从镜像区域的右边开始寻找非空内容
+                search_start = max_x + 10
+                search_end = min(search_start + area_width * 3, w)
+                
+                if search_end > search_start and search_end <= w:
+                    # 从主图案的左边缘采样
+                    sample_region = result[min_y:max_y, search_start:search_end].copy()
+                    
+                    # 如果采样区域太大，只取靠近边缘的部分
+                    if sample_region.shape[1] > area_width * 2:
+                        sample_region = sample_region[:, :area_width * 2]
+                    
+                    # 水平镜像
+                    mirrored = cv2.flip(sample_region, 1)
+                    
+                    # 调整大小以适应镜像区域
+                    if mirrored.shape[:2] != (area_height, area_width):
+                        mirrored = cv2.resize(mirrored, (area_width, area_height), 
+                                            interpolation=cv2.INTER_LINEAR)
+                else:
+                    # 如果找不到合适的采样区域，创建渐变填充
+                    mirrored = np.ones((area_height, area_width, result.shape[2]), dtype=result.dtype) * 200
+            
+            else:  # 右侧或其他位置
+                # 类似处理
+                search_end = min_x - 10
+                search_start = max(0, search_end - area_width * 3)
+                
+                if search_start < search_end:
+                    sample_region = result[min_y:max_y, search_start:search_end].copy()
+                    if sample_region.shape[1] > area_width * 2:
+                        sample_region = sample_region[:, -area_width * 2:]
+                    mirrored = cv2.flip(sample_region, 1)
+                    if mirrored.shape[:2] != (area_height, area_width):
+                        mirrored = cv2.resize(mirrored, (area_width, area_height), 
+                                            interpolation=cv2.INTER_LINEAR)
+                else:
+                    mirrored = np.ones((area_height, area_width, result.shape[2]), dtype=result.dtype) * 200
+            
+            # 应用透视变换以适应梯形/平行四边形区域
+            src_points = np.float32([
+                [0, 0],
+                [area_width - 1, 0],
+                [area_width - 1, area_height - 1],
+                [0, area_height - 1]
+            ])
+            
+            dst_points = points.astype(np.float32)
+            
+            # 计算透视变换矩阵
+            M = cv2.getPerspectiveTransform(src_points, dst_points)
+            
+            # 应用透视变换
+            warped = cv2.warpPerspective(
+                mirrored, M, (w, h),
+                flags=cv2.INTER_LINEAR,
+                borderMode=cv2.BORDER_CONSTANT
+            )
+            
+            # 创建掩码并合并
+            mask = np.zeros((h, w), dtype=np.uint8)
+            cv2.fillPoly(mask, [points.astype(np.int32)], 255)
+            
+            # 添加边缘羽化以获得更自然的过渡
+            mask_blurred = cv2.GaussianBlur(mask, (5, 5), 0)
+            alpha = mask_blurred.astype(float) / 255.0
+            
+            # 混合图像
+            if len(result.shape) == 3:
+                for c in range(result.shape[2]):
+                    result[:, :, c] = (1 - alpha) * result[:, :, c] + alpha * warped[:, :, c]
+            else:
+                result = (1 - alpha) * result + alpha * warped
+            
+            result = result.astype(image.dtype)
+            
+        except Exception as e:
+            print(f"智能镜像填充失败: {e}")
+            # 使用基础镜像填充作为后备
+            return ImageProcessor.mirror_fill_area(image, area_points, source_image)
+
+        # return ImageProcessor.mirror_fill_area(image, area_points, source_image)
+        return result
 
