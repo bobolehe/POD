@@ -6,13 +6,14 @@ from routes.main import main_bp
 from routes.templates import templates_bp
 from routes.preview import preview_bp
 from routes.batch import batch_bp
+from routes.product_table import product_table_bp
 
 APP_DIR = os.path.dirname(__file__)
 DATA_DIR = os.path.join(APP_DIR, 'data')
 TPL_DIR = os.path.join(DATA_DIR, 'templates')
 DESIGN_DIR = os.path.join(DATA_DIR, 'designs')
 STATIC_DIR = os.path.join(APP_DIR, 'static')
-OUTPUT_DIR = os.path.join(STATIC_DIR, 'outputs')
+OUTPUT_DIR = os.path.join(STATIC_DIR, 'images', 'outputs')
 
 # 确保必要的目录存在
 os.makedirs(TPL_DIR, exist_ok=True)
@@ -26,6 +27,7 @@ app.register_blueprint(main_bp)
 app.register_blueprint(templates_bp)
 app.register_blueprint(preview_bp)
 app.register_blueprint(batch_bp)
+app.register_blueprint(product_table_bp)
 
 if __name__ == '__main__':
     app.run(host='127.0.0.1', port=5000, debug=True)

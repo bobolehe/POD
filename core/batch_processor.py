@@ -2,6 +2,7 @@ import os
 from typing import List, Dict, Any, Optional
 from PIL import Image
 import numpy as np
+from datetime import datetime
 
 from . import main_image_tool as mit
 from .export_utils import export_multi_resolution
@@ -15,7 +16,7 @@ def ensure_dir(path: str) -> None:
 
 def batch_generate(design_paths: List[str],
                    template_records: Optional[List[Dict[str, Any]]] = None,
-                   output_dir: str = 'outputs',
+                   output_dir: str = 'images/outputs',
                    sensitivity: str = 'high',
                    edge_blur: int = 3,
                    show_corners: bool = False,
@@ -23,7 +24,7 @@ def batch_generate(design_paths: List[str],
                    dpi: int = 300) -> Dict[str, List[str]]:
     """
     批量将设计图填充到模板(含黄/绿区域)并导出指定分辨率版本。
-    为每个设计图创建独立的文件夹存放生成的图片。
+    为每次批量生成创建时间戳文件夹，在其中为每个设计图创建独立的文件夹存放生成的图片。
     - design_paths: 设计图路径列表
     - template_records: 模板记录列表(来自模板DB)，若None则使用全部模板
     - output_dir: 输出目录
@@ -37,13 +38,18 @@ def batch_generate(design_paths: List[str],
     if template_records is None:
         template_records = list_templates()
 
+    # 创建时间戳文件夹
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamped_output_dir = os.path.join(output_dir, f"batch_{timestamp}")
+    ensure_dir(timestamped_output_dir)
+
     generated_files_by_design: Dict[str, List[str]] = {}
 
     for design in design_paths:
         d_base = os.path.splitext(os.path.basename(design))[0]
         
-        # 为每个设计图创建独立的文件夹
-        design_output_dir = os.path.join(output_dir, d_base)
+        # 在时间戳文件夹内为每个设计图创建独立的文件夹
+        design_output_dir = os.path.join(timestamped_output_dir, d_base)
         ensure_dir(design_output_dir)
         
         generated_files_by_design[d_base] = []

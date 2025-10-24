@@ -52,6 +52,13 @@
       </form>
     </section>
 
+    {% if error %}
+    <section class="card">
+      <h2 style="color: #dc2626;">错误信息</h2>
+      <p style="color: #dc2626;">{{ error }}</p>
+    </section>
+    {% endif %}
+
     {% if output_url %}
     <section class="card">
       <h2>预览结果</h2>

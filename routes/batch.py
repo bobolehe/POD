@@ -46,7 +46,7 @@ def batch():
 
     selected_templates = [r for r in templates if r['id'] in tpl_ids]
     from pathlib import Path
-    output_dir = os.path.join(app_dir, 'static', 'outputs')
+    output_dir = os.path.join(app_dir, 'static', 'images', 'outputs')
     Path(output_dir).mkdir(parents=True, exist_ok=True)
     
     try:
@@ -66,8 +66,8 @@ def batch():
         for design_name, file_paths in generated_files_by_design.items():
             for file_path in file_paths:
                 # 获取相对于static目录的路径
-                relative_path = os.path.relpath(file_path, 'static')
-                output_urls.append(f"/static/{relative_path}")
+                relative_path = os.path.relpath(file_path, os.path.join(app_dir, 'static'))
+                output_urls.append(f"/static/{relative_path.replace(os.sep, '/')}")
         
         return render_template('batch.html', templates=templates, output_urls=output_urls)
     

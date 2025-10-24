@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>商品表格生成 - POD 预览系统</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}"/>
+  <style>
+    .product-form {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    
+    .form-group {
+      margin-bottom: 20px;
+    }
+    
+    .form-group label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: bold;
+      color: #333;
+    }
+    
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+      box-sizing: border-box;
+    }
+    
+    .form-group textarea {
+      min-height: 200px;
+      font-family: 'Courier New', monospace;
+      resize: vertical;
+    }
+    
+    .product-template {
+      background: #f8f9fa;
+      border: 1px solid #e9ecef;
+      border-radius: 4px;
+      padding: 15px;
+      margin-bottom: 15px;
+    }
+    
+    .product-template h4 {
+      margin: 0 0 10px 0;
+      color: #495057;
+    }
+    
+    .product-template pre {
+      background: #fff;
+      border: 1px solid #dee2e6;
+      border-radius: 3px;
+      padding: 10px;
+      margin: 0;
+      font-size: 12px;
+      overflow-x: auto;
+    }
+    
+    .button-group {
+      display: flex;
+      gap: 10px;
+      margin-top: 20px;
+    }
+    
+    .btn-validate {
+      background: #17a2b8;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    
+    .btn-validate:hover {
+      background: #138496;
+    }
+    
+    .validation-result {
+      margin-top: 10px;
+      padding: 10px;
+      border-radius: 4px;
+      display: none;
+    }
+    
+    .validation-success {
+      background: #d4edda;
+      border: 1px solid #c3e6cb;
+      color: #155724;
+    }
+    
+    .validation-error {
+      background: #f8d7da;
+      border: 1px solid #f5c6cb;
+      color: #721c24;
+    }
+    
+    .error-list {
+      margin: 5px 0 0 0;
+      padding-left: 20px;
+    }
+    
+    .format-options {
+      display: flex;
+      gap: 20px;
+      align-items: center;
+    }
+    
+    .format-options label {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-weight: normal;
+      margin-bottom: 0;
+    }
+    
+    .format-options input[type="radio"] {
+      width: auto;
+      margin: 0;
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <div class="inner">
+      <div class="site-title">POD 预览系统</div>
+      <nav class="nav">
+        <a href="{{ url_for('main.index') }}">首页</a>
+        <a href="{{ url_for('templates.templates_list') }}">模板管理</a>
+        <a href="{{ url_for('preview.preview') }}">生成预览</a>
+        <a href="{{ url_for('batch.batch') }}">批量生成</a>
+        <a href="{{ url_for('product_table.product_table') }}" class="active">商品表格</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="card">
+      <h1>商品表格生成</h1>
+      <p>创建和导出商品信息表格，支持Excel和CSV格式。</p>
+      
+      {% if error %}
+      <div class="error">
+        <strong>错误：</strong>{{ error }}
+      </div>
+      {% endif %}
+      
+      <!-- 亚马逊上品表格生成 -->
+      <div class="form-group">
+        <h3>亚马逊上品表格生成</h3>
+        <p>通过选择批次文件夹和上传亚马逊商品模板，自动生成符合亚马逊格式的商品表格</p>
+      </div>
+      
+
+      
+
+      
+      <!-- 亚马逊模式表单 -->
+      <form method="post" action="/product-table/amazon" class="product-form" id="amazon-form" enctype="multipart/form-data">
+        <div class="form-group">
+          <label for="amazon_table_title">表格标题：</label>
+          <input type="text" id="amazon_table_title" name="table_title" value="亚马逊商品上传表" required>
+        </div>
+        
+        <div class="form-group">
+          <label for="amazon_batch_folder">选择批次文件夹：</label>
+          <select id="amazon_batch_folder" name="batch_folder" required onchange="loadAmazonBatchInfo()">
+            <option value="">请选择批次文件夹...</option>
+          </select>
+        </div>
+        
+        <div class="form-group">
+          <label for="amazon_template">上传亚马逊商品模板：</label>
+          <input type="file" id="amazon_template" name="amazon_template" accept=".xlsx,.xls,.csv" required onchange="parseAmazonTemplate()">
+          <small>支持Excel (.xlsx, .xls) 和 CSV (.csv) 格式</small>
+        </div>
+        
+        <div id="template-info" class="product-template" style="display: none;">
+          <h4>模板信息：</h4>
+          <div id="template-details"></div>
+        </div>
+        
+        <div id="amazon-batch-info" class="product-template" style="display: none;">
+          <h4>批次信息：</h4>
+          <div id="amazon-batch-details"></div>
+        </div>
+        
+        <div id="variant-mapping" class="product-template" style="display: none;">
+          <h4>变体匹配：</h4>
+          <div id="variant-mapping-details"></div>
+        </div>
+        
+        <div class="product-template">
+          <h4>功能说明：</h4>
+          <ul>
+            <li>上传包含变体信息的亚马逊商品模板</li>
+            <li>系统将读取模板中的变体信息（如颜色、尺寸等）</li>
+            <li>自动匹配批次文件夹中的产品图片</li>
+            <li>生成符合亚马逊上传格式的商品表格</li>
+            <li>支持多变体商品的批量处理</li>
+          </ul>
+        </div>
+        
+        <div class="button-row">
+          <button type="submit" class="btn">生成亚马逊上品表格</button>
+          <button type="button" class="btn" onclick="refreshAmazonBatchList()">刷新批次列表</button>
+          <button type="button" class="btn" onclick="clearAmazonTemplate()">清空模板</button>
+        </div>
+      </form>
+    </section>
+  </main>
+
+  <script>
+
+    
+
+    
+
+    
+    // 亚马逊模式相关函数
+    function loadAmazonBatchFolders() {
+      fetch('/product-table/api/batch-folders')
+        .then(response => response.json())
+        .then(data => {
+          const select = document.getElementById('amazon_batch_folder');
+          select.innerHTML = '<option value="">请选择批次文件夹...</option>';
+          
+          data.folders.forEach(folder => {
+            const option = document.createElement('option');
+            option.value = folder.name;
+            option.textContent = `${folder.name} (${folder.product_count} 个商品)`;
+            select.appendChild(option);
+          });
+        })
+        .catch(error => {
+          console.error('加载批次文件夹失败:', error);
+        });
+    }
+    
+    function loadAmazonBatchInfo() {
+      const batchFolder = document.getElementById('amazon_batch_folder').value;
+      const batchInfo = document.getElementById('amazon-batch-info');
+      const batchDetails = document.getElementById('amazon-batch-details');
+      
+      if (!batchFolder) {
+        batchInfo.style.display = 'none';
+        return;
+      }
+      
+      fetch(`/product-table/api/batch-info/${batchFolder}`)
+        .then(response => response.json())
+        .then(data => {
+          let html = `<p><strong>批次文件夹：</strong>${data.batch_name}</p>`;
+          html += `<p><strong>商品数量：</strong>${data.product_count}</p>`;
+          html += `<p><strong>总图片数：</strong>${data.total_images}</p>`;
+          html += '<p><strong>商品列表：</strong></p><ul>';
+          
+          data.products.forEach(product => {
+            html += `<li>${product.name} (${product.image_count} 张图片)</li>`;
+          });
+          
+          html += '</ul>';
+          batchDetails.innerHTML = html;
+          batchInfo.style.display = 'block';
+          
+          // 如果已经上传了模板，重新进行匹配
+          if (document.getElementById('amazon_template').files.length > 0) {
+            matchVariantsWithProducts();
+          }
+        })
+        .catch(error => {
+          console.error('加载批次信息失败:', error);
+          batchInfo.style.display = 'none';
+        });
+    }
+    
+    function parseAmazonTemplate() {
+      const fileInput = document.getElementById('amazon_template');
+      const templateInfo = document.getElementById('template-info');
+      const templateDetails = document.getElementById('template-details');
+      
+      if (!fileInput.files.length) {
+        templateInfo.style.display = 'none';
+        return;
+      }
+      
+      const formData = new FormData();
+      formData.append('template_file', fileInput.files[0]);
+      
+      fetch('/product-table/api/parse-amazon-template', {
+        method: 'POST',
+        body: formData
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          let html = `<p><strong>文件名：</strong>${data.filename}</p>`;
+          html += `<p><strong>变体数量：</strong>${data.variant_count}</p>`;
+          html += '<p><strong>变体信息：</strong></p><ul>';
+          
+          data.variants.forEach(variant => {
+            html += `<li>${variant.parent_sku || '主商品'} - ${variant.color || '默认颜色'} - ${variant.size || '默认尺寸'}</li>`;
+          });
+          
+          html += '</ul>';
+          templateDetails.innerHTML = html;
+          templateInfo.style.display = 'block';
+          
+          // 如果已经选择了批次，进行匹配
+          if (document.getElementById('amazon_batch_folder').value) {
+            matchVariantsWithProducts();
+          }
+        } else {
+          alert('模板解析失败：' + data.error);
+          templateInfo.style.display = 'none';
+        }
+      })
+      .catch(error => {
+        console.error('解析模板失败:', error);
+        alert('解析模板失败，请检查文件格式');
+        templateInfo.style.display = 'none';
+      });
+    }
+    
+    function matchVariantsWithProducts() {
+      const batchFolder = document.getElementById('amazon_batch_folder').value;
+      const templateFile = document.getElementById('amazon_template').files[0];
+      
+      if (!batchFolder || !templateFile) {
+        return;
+      }
+      
+      const formData = new FormData();
+      formData.append('batch_folder', batchFolder);
+      formData.append('template_file', templateFile);
+      
+      fetch('/product-table/api/match-variants', {
+        method: 'POST',
+        body: formData
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          const variantMapping = document.getElementById('variant-mapping');
+          const variantDetails = document.getElementById('variant-mapping-details');
+          
+          let html = '<p><strong>匹配结果：</strong></p>';
+          html += `<p>成功匹配：${data.matched_count} 个变体</p>`;
+          html += `<p>未匹配：${data.unmatched_count} 个变体</p>`;
+          html += '<div style="max-height: 200px; overflow-y: auto;"><ul>';
+          
+          data.matches.forEach(match => {
+            html += `<li><strong>${match.variant_info}</strong> → ${match.product_folder || '未匹配'}</li>`;
+          });
+          
+          html += '</ul></div>';
+          variantDetails.innerHTML = html;
+          variantMapping.style.display = 'block';
+        } else {
+          console.error('匹配失败:', data.error);
+        }
+      })
+      .catch(error => {
+        console.error('匹配变体失败:', error);
+      });
+    }
+    
+    function refreshAmazonBatchList() {
+      loadAmazonBatchFolders();
+      document.getElementById('amazon-batch-info').style.display = 'none';
+      document.getElementById('variant-mapping').style.display = 'none';
+    }
+    
+    function clearAmazonTemplate() {
+      document.getElementById('amazon_template').value = '';
+      document.getElementById('template-info').style.display = 'none';
+      document.getElementById('variant-mapping').style.display = 'none';
+    }
+    
+    // 页面加载时自动加载批次文件夹
+    document.addEventListener('DOMContentLoaded', function() {
+      loadAmazonBatchFolders();
+    });
+  </script>
+</body>
+</html>
