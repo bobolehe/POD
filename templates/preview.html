@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>生成预览</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}"/>
+</head>
+<body>
+  <header class="header">
+    <div class="inner">
+      <div class="site-title">POD 预览系统</div>
+      <nav class="nav">
+        <a href="{{ url_for('templates.templates_list') }}">模板管理</a>
+        <a href="{{ url_for('preview.preview') }}">生成预览</a>
+        <a href="{{ url_for('batch.batch') }}">批量生成</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="card">
+      <h1>生成预览</h1>
+      <form method="post" enctype="multipart/form-data" action="{{ url_for('preview.preview') }}" class="form-grid">
+        <div class="form-row">
+          <label>选择模板</label>
+          <select name="template_id" required>
+            {% for t in templates %}
+              <option value="{{ t.id }}">{{ t.name }} ({{ t.path }})</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-row">
+          <label>设计图</label>
+          <input type="file" name="file" required>
+        </div>
+        <div class="form-row">
+          <label>灵敏度</label>
+          <select name="sensitivity">
+            <option value="high">high</option>
+            <option value="medium">medium</option>
+            <option value="low">low</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label>边缘羽化</label>
+          <input type="number" name="edge_blur" value="3" min="0" max="11">
+        </div>
+        <div class="form-row" style="grid-column: 1 / -1;">
+          <button type="submit">开始生成</button>
+        </div>
+      </form>
+    </section>
+
+    {% if output_url %}
+    <section class="card">
+      <h2>预览结果</h2>
+      <div class="preview-item">
+        <img src="{{ output_url }}" alt="预览结果"/>
+        <p><a href="{{ output_url }}" target="_blank">{{ output_url }}</a></p>
+      </div>
+    </section>
+    {% endif %}
+
+    <div class="footer"><a class="btn" href="{{ url_for('main.index') }}">返回首页</a></div>
+  </main>
+</body>
+</html>

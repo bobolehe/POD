@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="400" height="300" xmlns="http://www.w3.org/2000/svg">
+  <rect width="400" height="300" fill="#f0f0f0"/>
+  <text x="200" y="150" text-anchor="middle" font-family="Arial" font-size="24" fill="#333">休息设计</text>
+  <circle cx="200" cy="200" r="30" fill="#4CAF50"/>
+</svg>

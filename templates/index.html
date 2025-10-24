@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>POD 预览系统</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}"/>
+</head>
+<body>
+  <header class="header">
+    <div class="inner">
+      <div class="site-title">POD 预览系统</div>
+      <nav class="nav">
+        <a href="{{ url_for('templates.templates_list') }}">模板管理</a>
+        <a href="{{ url_for('preview.preview') }}">生成预览</a>
+        <a href="{{ url_for('batch.batch') }}">批量生成</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="card">
+      <h1>POD 商品模板与图案预览</h1>
+      <p>管理模板、生成单图预览或批量生成高清导出，支持LANCZOS缩放与DPI设置。</p>
+      <div class="button-row">
+        <a class="btn" href="{{ url_for('templates.templates_list') }}">进入模板管理</a>
+        <a class="btn" href="{{ url_for('preview.preview') }}">生成单图预览</a>
+        <a class="btn" href="{{ url_for('batch.batch') }}">批量生成导出</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">© POD Preview System</footer>
+</body>
+</html>
